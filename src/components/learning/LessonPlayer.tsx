@@ -11,8 +11,10 @@ import {
   ArrowRight,
   CheckCircle2,
   Ear,
+  FileText,
   Layers,
   Mic,
+  Monitor,
   Puzzle,
   RotateCcw,
   Sparkles,
@@ -87,6 +89,7 @@ export default function LessonPlayer() {
     words.find((w) => w.phonemes.some((p) => p.toLowerCase() === g.toLowerCase()));
 
   const [phase, setPhase] = useState<Phase>(1);
+  const [isTvMode, setIsTvMode] = useState<boolean>(false);
 
   // ==================== State ขั้นที่ 1: เรียนรู้เสียงโฟนิกส์ ====================
   const [p1Idx, setP1Idx] = useState(0);
@@ -122,6 +125,14 @@ export default function LessonPlayer() {
   };
 
   // ==================== State ขั้นที่ 3: เรียนรู้การประสมเสียงเป็นคำ ====================
+  // แบ่งเป็น 2 ช่วงชัดเจน:
+  // 1) 'demo' = ครูและจอทีวีสาธิตตัวอย่างให้ดูจนครบทุกคำก่อน (I Do)
+  // 2) 'practice' = นักเรียนลงมือฝึกผสมเสียงด้วยตัวเอง (You Do)
+  const [p3Stage, setP3Stage] = useState<'demo' | 'practice'>('demo');
+  const [p3DemoIdx, setP3DemoIdx] = useState(0);
+  const [p3DemoBlended, setP3DemoBlended] = useState(false);
+  const [p3DemoSeen, setP3DemoSeen] = useState<Set<number>>(new Set([0]));
+
   const [p3Idx, setP3Idx] = useState(0);
   const [p3Tapped, setP3Tapped] = useState<Set<number>>(new Set());
   const [p3ActiveTile, setP3ActiveTile] = useState<number>(-1);
@@ -134,6 +145,7 @@ export default function LessonPlayer() {
   const [p3Recording, setP3Recording] = useState(false);
 
   const p3Word = words[p3Idx];
+  const p3DemoWord = words[p3DemoIdx] ?? words[0];
 
   // ==================== State ขั้นที่ 4: ฝึกต่อเสียงสะกดคำ (Spell / Build Word) ====================
   const p4Words = useMemo(() => words.slice(0, Math.min(words.length, 6)), [words]);
@@ -270,6 +282,10 @@ export default function LessonPlayer() {
       setP2Mastery(initMap);
       pickNextP2Question(initMap);
     } else if (nextPhase === 3) {
+      setP3Stage('demo');
+      setP3DemoIdx(0);
+      setP3DemoBlended(false);
+      setP3DemoSeen(new Set([0]));
       setP3Idx(0);
       setP3Tapped(new Set());
       setP3Blended(false);
@@ -278,6 +294,11 @@ export default function LessonPlayer() {
       setP3Tries(0);
       setP3Heard('');
       setP3SelfRecordUrl(null);
+      if (words[0]) {
+        setTimeout(() => {
+          playBlend(words[0].phonemes, words[0].word, () => setP3DemoBlended(true));
+        }, 400);
+      }
     } else if (nextPhase === 4) {
       setP4Idx(0);
       if (p4Words[0]) initP4Word(p4Words[0]);
@@ -398,6 +419,30 @@ export default function LessonPlayer() {
     }
   };
 
+  const handleP3DemoPlay = (w: WordItem) => {
+    setP3DemoBlended(false);
+    playBlend(w.phonemes, w.word, () => setP3DemoBlended(true));
+  };
+
+  const handleP3DemoNext = () => {
+    if (p3DemoIdx + 1 < words.length) {
+      const nextIdx = p3DemoIdx + 1;
+      setP3DemoIdx(nextIdx);
+      setP3DemoBlended(false);
+      setP3DemoSeen((prev) => new Set(prev).add(nextIdx));
+      const nextWord = words[nextIdx];
+      if (nextWord) {
+        setTimeout(() => {
+          playBlend(nextWord.phonemes, nextWord.word, () => setP3DemoBlended(true));
+        }, 300);
+      }
+    } else {
+      setP3Stage('practice');
+      setP3Idx(0);
+      celebrate(false);
+    }
+  };
+
   // ==================== Logic ขั้นที่ 4 ====================
   const p4CurrentWord = p4Words[p4Idx];
   const p4TargetUnits = p4CurrentWord
@@ -505,14 +550,67 @@ export default function LessonPlayer() {
     advanceP5(ok ? 1 : 0);
   };
 
+  // รองรับคีย์บอร์ดและพอยเตอร์ไร้สายสำหรับโหมดจอทีวีหน้าชั้นเรียน (TV Presentation Shortcuts)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      if (e.code === 'Space') {
+        e.preventDefault();
+        if (phase === 1 && currentPhoneme) {
+          if (isSentenceLesson) playWordOrSentence(currentPhoneme.grapheme, 'normal');
+          else playPhoneme(currentPhoneme.grapheme);
+        } else if (phase === 2 && p2Target) {
+          if (isSentenceLesson) playWordOrSentence(p2Target, 'normal');
+          else playPhoneme(p2Target);
+        } else if (phase === 3) {
+          if (p3Stage === 'demo') {
+            const w = words[p3DemoIdx];
+            if (w) handleP3DemoPlay(w);
+          } else if (p3Word) {
+            handleP3Blend();
+          }
+        } else if (phase === 4 && p4CurrentWord) {
+          playWordOrSentence(p4CurrentWord.word, 'normal');
+        } else if (phase === 5 && currentQ) {
+          if (currentQ.isPhonemeAudio) playPhoneme(currentQ.audioTarget);
+          else playWordOrSentence(currentQ.audioTarget, 'normal');
+        }
+      } else if (['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Numpad1', 'Numpad2', 'Numpad3', 'Numpad4'].includes(e.code)) {
+        const choiceIdx = parseInt(e.key, 10) - 1;
+        if (phase === 2 && p2Options[choiceIdx]) {
+          handleP2Answer(p2Options[choiceIdx]);
+        } else if (phase === 5 && currentQ?.options?.[choiceIdx]) {
+          handleP5SelectOption(currentQ.options[choiceIdx]);
+        }
+      } else if (e.code === 'ArrowRight') {
+        if (phase === 1 && p1Idx + 1 < targetPhonemes.length) {
+          setP1Idx(p1Idx + 1);
+        } else if (phase === 3 && p3Stage === 'demo') {
+          handleP3DemoNext();
+        }
+      } else if (e.code === 'ArrowLeft') {
+        if (phase === 1 && p1Idx > 0) {
+          setP1Idx(p1Idx - 1);
+        } else if (phase === 3 && p3Stage === 'demo' && p3DemoIdx > 0) {
+          setP3DemoIdx(p3DemoIdx - 1);
+          setP3DemoBlended(false);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [phase, currentPhoneme, p2Target, p2Options, p3Stage, p3DemoIdx, p3Word, p4CurrentWord, currentQ, p1Idx, targetPhonemes.length, words]);
+
   return (
     <div
       className="min-h-screen flex flex-col pb-12"
       style={{ background: `linear-gradient(180deg, ${stage.soft}, #fffbf0 65%)` }}
     >
       {/* ส่วนหัวและแถบ 5 ขั้นตอนการเรียนรู้ */}
-      <header className="bg-white/85 backdrop-blur border-b border-slate-200 sticky top-0 z-30">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+      <header className="bg-white/90 backdrop-blur border-b border-slate-200 sticky top-0 z-30 shadow-xs">
+        <div className={`${isTvMode ? 'max-w-7xl' : 'max-w-5xl'} mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3`}>
           <div className="flex items-center gap-3">
             <button
               onClick={() => nav('/map')}
@@ -531,8 +629,33 @@ export default function LessonPlayer() {
             </div>
           </div>
 
-          {/* ปุ่มสลับดู 5 ขั้นตอน */}
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+          {/* ปุ่มเครื่องมือสำหรับคุณครู: โหมดจอทีวี + ใบงาน PDF */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsTvMode((v) => !v)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-thai text-sm border transition-all ${
+                isTvMode
+                  ? 'bg-amber-500 text-white border-amber-600 font-bold shadow-sm animate-pulse'
+                  : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300'
+              }`}
+              title="สลับโหมดจอทีวีหน้าชั้นเรียน (ตัวหนังสือใหญ่พิเศษ + คีย์บอร์ด)"
+            >
+              <Monitor className="w-4 h-4" />
+              <span>{isTvMode ? '🖥️ จอทีวี (เปิดอยู่)' : '🖥️ โหมดจอทีวี'}</span>
+            </button>
+
+            <button
+              onClick={() => nav(`/worksheet/${lessonId}`)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-thai text-sm font-bold transition-all"
+              title="เปิดใบงาน PDF สำหรับพิมพ์แจกนักเรียน"
+            >
+              <FileText className="w-4 h-4" />
+              <span className="hidden sm:inline">ใบงาน PDF</span>
+            </button>
+          </div>
+
+          {/* แถบ 5 ขั้นตอนการเรียนรู้ */}
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar w-full sm:w-auto mt-1 sm:mt-0">
             {PHASE_INFO.map((p) => {
               const Icon = p.icon;
               const isCurrent = phase === p.id;
@@ -557,6 +680,16 @@ export default function LessonPlayer() {
             })}
           </div>
         </div>
+
+        {/* แถบแจ้งเตือนปุ่มลัดสำหรับโหมดจอทีวี */}
+        {isTvMode && (
+          <div className="bg-amber-100/90 border-t border-amber-200 px-4 py-1.5 text-center font-thai text-xs text-amber-900 flex items-center justify-center gap-4 flex-wrap">
+            <span>✨ <b>โหมดจอทีวีหน้าชั้นเรียนเปิดใช้งานอยู่:</b></span>
+            <span>กด [<b>Spacebar</b>] ฟังเสียง</span>
+            <span>กด [<b>1, 2, 3, 4</b>] ชูนิ้วตอบคำถาม</span>
+            <span>กด [<b>ลูกศร ซ้าย/ขวา</b>] สลับเสียง/คำ</span>
+          </div>
+        )}
       </header>
 
       <main className="flex-1 max-w-4xl w-full mx-auto px-4 pt-6">
@@ -723,15 +856,15 @@ export default function LessonPlayer() {
                 return (
                   <div
                     key={g}
-                    className={`px-3 py-1.5 rounded-xl border-2 flex items-center gap-1.5 font-kid font-bold ${
+                    className={`px-3.5 py-1.5 rounded-xl border-2 flex items-center gap-2 font-kid font-bold ${
                       done
-                        ? 'bg-emerald-50 border-emerald-400 text-emerald-700'
+                        ? 'bg-emerald-50 border-emerald-400 text-emerald-700 shadow-xs'
                         : 'bg-white border-slate-200 text-slate-700'
                     }`}
                   >
-                    <span>{g}</span>
-                    <span className="text-xs font-thai">
-                      {done ? '✓ จำได้แล้ว' : `${count}/${REQUIRED_MASTERY}`}
+                    <span className="text-xl">{g}</span>
+                    <span className="text-xs font-thai font-normal">
+                      {done ? '⭐⭐ ผ่าน' : count === 1 ? '⭐ (อีก 1 ครั้ง)' : '⚪ ยังไม่ผ่าน'}
                     </span>
                   </div>
                 );
@@ -744,6 +877,12 @@ export default function LessonPlayer() {
                   กดปุ่มลำโพงเพื่อฟังเสียง แล้วแตะตัวอักษรที่ได้ยิน
                 </p>
 
+                {isTvMode && (
+                  <div className="mt-2 px-4 py-1.5 bg-amber-50 border border-amber-200 rounded-xl font-thai text-sm text-amber-900">
+                    📢 <b>กิจกรรมหน้าชั้น:</b> ครูเปิดเสียง ➔ เด็กทั้งห้องชูนิ้ว (1, 2, 3 หรือ 4) ➔ ครูกดเฉลย!
+                  </div>
+                )}
+
                 <button
                   onClick={() => {
                     if (isSentenceLesson) playWordOrSentence(p2Target, 'normal');
@@ -755,18 +894,18 @@ export default function LessonPlayer() {
                 >
                   <Volume2 className="w-16 h-16" />
                 </button>
-                <span className="font-thai text-sm text-slate-400 mt-2">แตะลำโพงเพื่อฟังซ้ำ</span>
+                <span className="font-thai text-sm text-slate-400 mt-2">แตะลำโพงเพื่อฟังซ้ำ (หรือกด Spacebar)</span>
 
-                {/* ตัวเลือก 4 ตัวอักษร */}
+                {/* ตัวเลือก 4 ตัวอักษร พร้อมหมายเลขกำกับสำหรับการชูนิ้วตอบ */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6 w-full max-w-xl">
-                  {p2Options.map((opt) => {
+                  {p2Options.map((opt, optIdx) => {
                     const isPicked = p2Picked === opt;
                     const isAnswer = p2Feedback !== 'none' && opt === p2Target;
                     return (
                       <button
                         key={opt}
                         onClick={() => handleP2Answer(opt)}
-                        className={`h-28 rounded-3xl font-kid font-bold text-5xl border-4 transition-all ${
+                        className={`relative h-28 sm:h-36 rounded-3xl font-kid font-bold text-5xl sm:text-6xl border-4 transition-all ${
                           isAnswer
                             ? 'bg-emerald-500 text-white border-emerald-600 scale-105'
                             : isPicked && p2Feedback === 'wrong'
@@ -775,6 +914,10 @@ export default function LessonPlayer() {
                         }`}
                         style={{ boxShadow: '0 6px 0 0 rgb(0 0 0 / 0.12)' }}
                       >
+                        {/* ป้ายหมายเลขชูนิ้วตอบ */}
+                        <span className="absolute top-2 left-2.5 w-7 h-7 rounded-full bg-slate-200 text-slate-700 font-thai text-xs font-bold grid place-items-center">
+                          {optIdx + 1}
+                        </span>
                         {opt.replace('_', '‿')}
                       </button>
                     );
@@ -788,7 +931,7 @@ export default function LessonPlayer() {
                 )}
                 {p2Feedback === 'wrong' && (
                   <div className="mt-5 font-thai text-xl text-rose-600 flex items-center gap-2">
-                    <XCircle className="w-6 h-6" /> ยังไม่ใช่นะ เสียงเมื่อกี้คือตัว “{p2Target}” ({getPhoneme(p2Target).thaiHint}) เดี๋ยวมาฝึกตัวนี้ซ้ำอีกครั้ง!
+                    <XCircle className="w-6 h-6" /> ยังไม่ใช่นะ เสียงเมื่อกี้คือตัว “{p2Target}” ({getPhoneme(p2Target).thaiHint}) เดี๋ยวระบบจะวนเสียงนี้กลับมาทวนซ้ำ!
                   </div>
                 )}
               </>
@@ -796,10 +939,10 @@ export default function LessonPlayer() {
               <div className="my-8 space-y-4">
                 <div className="text-7xl">🎉</div>
                 <h2 className="font-thai text-3xl text-emerald-700 font-bold">
-                  ยอดเยี่ยม! หนูจำเสียงตัวอักษรในบทนี้ได้แม่นทุกตัวแล้ว
+                  ยอดเยี่ยม! นักเรียนจำเสียงตัวอักษรในบทนี้ได้แม่นยำครบทุกตัวแล้ว
                 </h2>
                 <p className="font-thai text-lg text-slate-600">
-                  ต่อไปเรานำเสียงเหล่านี้มาฝึก “ผสมเป็นคำ” กันเลย
+                  ฐานเสียงพร้อมแล้ว ➔ ก้าวเข้าสู่ขั้นที่ 3: ดูตัวอย่างการผสมคำให้ครบก่อนฝึกเอง
                 </p>
                 <BigButton onClick={() => goToPhase(3)} color="#16a34a" shadow="#166534">
                   ไปขั้นที่ 3: เรียนรู้การผสมตัวอักษรเป็นคำ ➜
@@ -811,161 +954,335 @@ export default function LessonPlayer() {
 
         {/* =====================================================================
             ขั้นที่ 3: เรียนรู้การผสมตัวอักษรเป็นคำ (Step-by-Step Phonics Blending)
+            แบ่งเป็น 2 ช่วง: 
+            ช่วงที่ 1 (demo): ครูและจอทีวีสาธิตตัวอย่างให้ดูจนครบทุกคำก่อน (I Do)
+            ช่วงที่ 2 (practice): นักเรียนลงมือฝึกผสมเสียงด้วยตัวเอง (You Do)
            ===================================================================== */}
-        {phase === 3 && p3Word && (
+        {phase === 3 && (
           <section className="card p-6 md:p-8 flex flex-col items-center text-center animate-pop">
-            <span className="bg-purple-100 text-purple-800 font-thai px-4 py-1 rounded-full text-sm">
-              ขั้นที่ 3 จาก 5 • เรียนรู้การผสมเสียงเป็นคำ ({p3Idx + 1}/{words.length})
-            </span>
+            {/* สลับการแสดงผลระหว่าง ช่วงที่ 1 (สาธิตตัวอย่าง) กับ ช่วงที่ 2 (ฝึกผสมเอง) */}
+            {p3Stage === 'demo' ? (
+              <>
+                <span className="bg-purple-100 text-purple-800 font-thai px-4 py-1 rounded-full text-sm font-bold">
+                  ขั้นที่ 3 จาก 5 • ช่วงที่ 1: ครูและจอทีวีสาธิตการผสมเสียงให้ดูจนครบ (I Do) ({p3DemoIdx + 1}/{words.length})
+                </span>
 
-            <p className="font-thai text-lg text-slate-600 mt-3">
-              1) แตะฟังเสียงทีละตัว ➜ 2) กดปุ่มผสมเสียงรวมเป็นคำ ➜ 3) ออกเสียงตามใส่ไมค์
-            </p>
-
-            {/* แผ่นเสียงแยกทีละตัว พร้อมคำใบ้เสียงภาษาไทยด้านล่าง */}
-            <div className="flex flex-wrap items-center justify-center gap-3 md:gap-4 mt-6">
-              {p3Units.map((g, i) => {
-                const ph = getPhoneme(g);
-                const tapped = p3Tapped.has(i);
-                const isSilentE = p3Word.magicE && i === p3Units.length - 1 && g.toLowerCase() === 'e';
-                return (
-                  <div key={i} className="flex items-center gap-2 md:gap-3">
-                    <div className="flex flex-col items-center relative">
-                      {isSilentE && (
-                        <span className="absolute -top-7 text-xl animate-bounce" title="Magic E ส่งพลังวิเศษ">
-                          🪄
-                        </span>
-                      )}
-                      <PhonemeTile
-                        grapheme={g}
-                        active={p3ActiveTile === i}
-                        onClick={() => handleP3TapTile(i, g)}
-                      />
-                      <span className="font-thai text-sm text-slate-600 mt-2">
-                        {isSilentE ? 'e เงียบ (เสกเสียงยาว)' : isSentenceLesson ? '' : ph.thaiHint.split(' ')[0]}
-                      </span>
-                      <span
-                        className={`text-xs font-thai mt-0.5 ${
-                          tapped ? 'text-emerald-600 font-bold' : 'text-slate-400'
+                {/* แถบคำศัพท์ตัวอย่างทั้งหมดในบทนี้ */}
+                <div className="flex flex-wrap justify-center gap-2 mt-4">
+                  {words.map((w, idx) => {
+                    const isCurrent = idx === p3DemoIdx;
+                    const isSeen = p3DemoSeen.has(idx);
+                    return (
+                      <button
+                        key={w.id}
+                        onClick={() => {
+                          setP3DemoIdx(idx);
+                          setP3DemoBlended(false);
+                          setP3DemoSeen((prev) => new Set(prev).add(idx));
+                          setTimeout(() => {
+                            playBlend(w.phonemes, w.word, () => setP3DemoBlended(true));
+                          }, 250);
+                        }}
+                        className={`px-3.5 py-1.5 rounded-xl font-kid font-bold text-base border-2 transition-all ${
+                          isCurrent
+                            ? 'border-purple-600 bg-purple-100 text-purple-900 scale-105 shadow-xs'
+                            : isSeen
+                              ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                              : 'border-slate-200 bg-slate-50 text-slate-400'
                         }`}
                       >
-                        {tapped ? '✓ ฟังแล้ว' : 'แตะฟัง'}
-                      </span>
+                        {w.word} {isSeen ? '✓' : ''}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-4 px-5 py-2 bg-purple-50 border border-purple-200 rounded-2xl font-thai text-sm text-purple-900 max-w-xl">
+                  📢 <b>หลักการสอน:</b> ให้นักเรียนดูและฟังตัวอย่างการเลื่อนเสียงผสมกันทีละคำจนครบก่อน เพื่อเข้าใจจังหวะการผสมเสียง
+                </div>
+
+                {/* กล่องสาธิตการผสมเสียงขนาดใหญ่พิเศษ (Big Demonstration Screen) */}
+                <div className="mt-6 w-full max-w-2xl bg-gradient-to-b from-slate-50 to-purple-50/40 border-2 border-purple-200 rounded-3xl p-6 md:p-8 shadow-xs">
+                  
+                  {/* การเลื่อนเสียงทีละขั้น Onset-Vowel Blending */}
+                  <div className="flex flex-wrap items-center justify-center gap-3 md:gap-5 my-2">
+                    {p3DemoWord.phonemes.map((g, i) => {
+                      const ph = getPhoneme(g);
+                      return (
+                        <div key={i} className="flex items-center gap-2 md:gap-3">
+                          <div className="flex flex-col items-center">
+                            <PhonemeTile grapheme={g} size="lg" />
+                            <span className="font-thai text-base text-slate-700 mt-2 font-bold">
+                              {ph.thaiHint.split(' ')[0]}
+                            </span>
+                          </div>
+                          {i + 1 < p3DemoWord.phonemes.length && (
+                            <span className="font-kid text-4xl text-purple-400 font-bold -mt-6">+</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* แถบคำอธิบายบันไดผสมเสียงภาษาไทย */}
+                  {p3DemoWord.blendGuideThai && (
+                    <div className="mt-6 bg-white border-2 border-purple-200 rounded-2xl p-4 font-thai text-lg text-purple-950 font-bold shadow-xs">
+                      💡 {p3DemoWord.blendGuideThai}
                     </div>
-                    {i + 1 < p3Units.length && (
-                      <span className="font-kid text-3xl text-slate-400 font-bold -mt-6">
-                        {p3Word.magicE && i === 1 ? '…' : '+'}
-                      </span>
+                  )}
+
+                  {/* คำศัพท์ผลลัพธ์พร้อมภาพประกอบ */}
+                  <div
+                    className={`mt-6 bg-white border-2 ${
+                      p3DemoBlended
+                        ? 'border-purple-500 ring-4 ring-purple-100 shadow-md'
+                        : 'border-slate-200'
+                    } rounded-2xl p-4 flex flex-wrap items-center justify-center gap-6 transition-all duration-300`}
+                  >
+                    <span className="text-6xl">{p3DemoWord.emoji}</span>
+                    <div className="text-left">
+                      <div className="font-kid font-bold text-5xl text-purple-900 tracking-wide">
+                        {p3DemoWord.word}
+                      </div>
+                      <div className="font-thai text-xl text-slate-600 mt-1">
+                        แปลว่า “{p3DemoWord.meaningThai}”
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row gap-2 ml-auto">
+                      <button
+                        onClick={() => handleP3DemoPlay(p3DemoWord)}
+                        className="px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-thai text-base font-bold flex items-center gap-2 shadow-xs"
+                      >
+                        <Sparkles className="w-5 h-5" /> เล่นผสมเสียง
+                      </button>
+                      <button
+                        onClick={() => playWordOrSentence(p3DemoWord.word, 'slow')}
+                        className="px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-thai text-base flex items-center gap-1.5"
+                      >
+                        🐢 ช้าๆ
+                      </button>
+                      <button
+                        onClick={() => playWordOrSentence(p3DemoWord.word, 'normal')}
+                        className="px-3.5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-thai text-base flex items-center gap-1.5"
+                      >
+                        🔊 ปกติ
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* ปุ่มนำทางตัวอย่าง */}
+                  <div className="flex items-center justify-between gap-3 mt-6 pt-4 border-t border-purple-100">
+                    <button
+                      disabled={p3DemoIdx === 0}
+                      onClick={() => {
+                        if (p3DemoIdx > 0) {
+                          setP3DemoIdx(p3DemoIdx - 1);
+                          setP3DemoBlended(false);
+                        }
+                      }}
+                      className="px-4 py-2.5 rounded-xl bg-slate-200 disabled:opacity-30 text-slate-700 font-thai text-base"
+                    >
+                      ⬅ คำก่อนหน้า
+                    </button>
+
+                    {p3DemoIdx + 1 < words.length ? (
+                      <BigButton
+                        onClick={handleP3DemoNext}
+                        color="#7c3aed"
+                        shadow="#5b21b6"
+                      >
+                        ดูตัวอย่างคำถัดไป ({words[p3DemoIdx + 1]?.word}) ➜
+                      </BigButton>
+                    ) : (
+                      <BigButton
+                        onClick={() => {
+                          setP3Stage('practice');
+                          setP3Idx(0);
+                          celebrate(false);
+                        }}
+                        color="#16a34a"
+                        shadow="#166534"
+                      >
+                        ดูตัวอย่างครบแล้ว! ถึงตานักเรียนฝึกผสมเอง 🚀
+                      </BigButton>
                     )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* แสดงแนวทางการผสมเสียงภาษาไทย (Additive Blending Guide) */}
-            {p3Word.blendGuideThai && (
-              <div className="mt-4 bg-indigo-50/80 border border-indigo-200 rounded-2xl px-5 py-2 font-thai text-base text-indigo-900">
-                💡 <span className="font-bold">หลักการผสมเสียง:</span> {p3Word.blendGuideThai}
-              </div>
-            )}
-
-            {/* ปุ่มลากผสมเสียง (Sound Blending Bar) */}
-            <button
-              onClick={handleP3Blend}
-              className="mt-5 w-full max-w-md py-4 px-6 rounded-3xl bg-indigo-600 hover:bg-indigo-700 text-white font-thai text-xl flex items-center justify-center gap-3 active:translate-y-1 transition-all"
-              style={{ boxShadow: '0 6px 0 0 #3730a3' }}
-            >
-              <Sparkles className="w-6 h-6" />
-              <span>กดเพื่อไล่เสียงผสมเป็นคำ</span>
-              <ArrowRight className="w-6 h-6" />
-              <span className="font-kid font-bold text-2xl underline">{p3Word.word}</span>
-            </button>
-
-            {/* เมื่อกดผสมเสียงแล้ว จะแสดงคำเต็ม + ความหมาย + ปุ่มไมค์ให้ฝึกออกเสียง */}
-            {(p3Blended || allP3TilesTapped) && (
-              <div className="mt-6 w-full max-w-md bg-slate-50 border-2 border-slate-200 rounded-3xl p-5 animate-pop">
-                <div className="flex items-center justify-center gap-4">
-                  <span className="text-6xl">{p3Word.emoji}</span>
-                  <div className="text-left">
-                    <div className="font-kid font-bold text-4xl text-indigo-900">{p3Word.word}</div>
-                    <div className="font-thai text-lg text-slate-600">แปลว่า “{p3Word.meaningThai}”</div>
-                  </div>
-                  <div className="flex flex-col gap-1.5 ml-auto">
-                    <button
-                      onClick={() => playWordOrSentence(p3Word.word, 'normal')}
-                      className="px-3 py-1.5 rounded-xl bg-sky-500 text-white font-thai text-sm"
-                    >
-                      🔊 ปกติ
-                    </button>
-                    <button
-                      onClick={() => playWordOrSentence(p3Word.word, 'slow')}
-                      className="px-3 py-1.5 rounded-xl bg-emerald-500 text-white font-thai text-sm"
-                    >
-                      🐢 ช้าๆ
-                    </button>
                   </div>
                 </div>
 
-                {/* ฝึกออกเสียงใส่ไมค์ */}
-                {!p3SpokenOk && (
-                  <div className="mt-5 pt-4 border-t border-slate-200 flex flex-col items-center">
-                    <button
-                      onClick={handleP3Mic}
-                      className={`w-20 h-20 rounded-full text-white grid place-items-center ${
-                        p3MicState === 'listening' ? 'animate-mic bg-rose-500' : 'bg-rose-500'
-                      }`}
-                      style={{ boxShadow: p3MicState === 'listening' ? undefined : '0 6px 0 0 #9f1239' }}
-                    >
-                      <Mic className="w-10 h-10" />
-                    </button>
-                    <p className="font-thai text-base text-slate-600 mt-2">
-                      {p3MicState === 'idle' && 'กดไมค์แล้วฝึกอ่านออกเสียงคำนี้'}
-                      {p3MicState === 'listening' && 'กำลังฟังเสียงของหนู... พูดเลย!'}
-                      {p3MicState === 'retry' &&
-                        (p3Heard
-                          ? `ระบบได้ยินว่า "${p3Heard}" — ลองออกเสียงอีกครั้งนะ`
-                          : 'ยังไม่ได้ยินเสียง ลองกดไมค์พูดอีกครั้ง หรือกดปุ่มด้านล่าง')}
-                    </p>
+                {/* ทางลัดข้ามไปโหมดฝึกเองทันที (กรณีทบทวน) */}
+                <button
+                  onClick={() => setP3Stage('practice')}
+                  className="mt-4 font-thai text-slate-500 hover:text-slate-700 underline text-sm"
+                >
+                  ข้ามไปยังช่วงที่ 2 (นักเรียนฝึกผสมเสียงด้วยตัวเอง)
+                </button>
+              </>
+            ) : (
+              /* ช่วงที่ 2: นักเรียนลงมือฝึกผสมเสียงเอง (Interactive Practice / You Do) */
+              <>
+                <div className="w-full flex items-center justify-between gap-2 mb-2">
+                  <button
+                    onClick={() => setP3Stage('demo')}
+                    className="font-thai text-sm text-purple-700 hover:text-purple-900 bg-purple-50 px-3 py-1 rounded-xl border border-purple-200"
+                  >
+                    ⬅ ย้อนกลับไปดูตัวอย่างการผสมคำ
+                  </button>
+                  <span className="bg-emerald-100 text-emerald-800 font-thai px-4 py-1 rounded-full text-sm font-bold">
+                    ช่วงที่ 2 จาก 2: นักเรียนลงมือฝึกผสมเสียงเอง ({p3Idx + 1}/{words.length})
+                  </span>
+                </div>
 
-                    {p3Tries >= 1 && (
-                      <div className="mt-3 flex flex-wrap justify-center gap-2">
-                        <button
-                          onClick={handleP3RecordSelf}
-                          disabled={p3Recording}
-                          className="px-4 py-2 rounded-xl bg-sky-100 text-sky-800 font-thai text-sm"
-                        >
-                          {p3Recording ? '🔴 กำลังอัดเสียง 3 วินาที...' : '🎙️ อัดเสียงตัวเองเทียบกับครู'}
-                        </button>
-                        {p3SelfRecordUrl && (
-                          <button
-                            onClick={() => new Audio(p3SelfRecordUrl).play()}
-                            className="px-4 py-2 rounded-xl bg-amber-100 text-amber-800 font-thai text-sm"
+                <p className="font-thai text-lg text-slate-600 mt-2">
+                  1) แตะฟังเสียงทีละตัว ➔ 2) กดปุ่มผสมเสียงรวมเป็นคำ ➔ 3) ฝึกออกเสียงใส่ไมค์
+                </p>
+
+                {/* แผ่นเสียงแยกทีละตัว พร้อมคำใบ้เสียงภาษาไทยด้านล่าง */}
+                <div className="flex flex-wrap items-center justify-center gap-3 md:gap-4 mt-6">
+                  {p3Units.map((g, i) => {
+                    const ph = getPhoneme(g);
+                    const tapped = p3Tapped.has(i);
+                    const isSilentE = p3Word.magicE && i === p3Units.length - 1 && g.toLowerCase() === 'e';
+                    return (
+                      <div key={i} className="flex items-center gap-2 md:gap-3">
+                        <div className="flex flex-col items-center relative">
+                          {isSilentE && (
+                            <span className="absolute -top-7 text-xl animate-bounce" title="Magic E ส่งพลังวิเศษ">
+                              🪄
+                            </span>
+                          )}
+                          <PhonemeTile
+                            grapheme={g}
+                            active={p3ActiveTile === i}
+                            onClick={() => handleP3TapTile(i, g)}
+                          />
+                          <span className="font-thai text-sm text-slate-600 mt-2">
+                            {isSilentE ? 'e เงียบ (เสกเสียงยาว)' : isSentenceLesson ? '' : ph.thaiHint.split(' ')[0]}
+                          </span>
+                          <span
+                            className={`text-xs font-thai mt-0.5 ${
+                              tapped ? 'text-emerald-600 font-bold' : 'text-slate-400'
+                            }`}
                           >
-                            ▶ ฟังเสียงตัวเอง
-                          </button>
+                            {tapped ? '✓ ฟังแล้ว' : 'แตะฟัง'}
+                          </span>
+                        </div>
+                        {i + 1 < p3Units.length && (
+                          <span className="font-kid text-3xl text-slate-400 font-bold -mt-6">
+                            {p3Word.magicE && i === 1 ? '…' : '+'}
+                          </span>
                         )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* แสดงแนวทางการผสมเสียงภาษาไทย (Additive Blending Guide) */}
+                {p3Word.blendGuideThai && (
+                  <div className="mt-4 bg-indigo-50/80 border border-indigo-200 rounded-2xl px-5 py-2 font-thai text-base text-indigo-900">
+                    💡 <span className="font-bold">หลักการผสมเสียง:</span> {p3Word.blendGuideThai}
+                  </div>
+                )}
+
+                {/* ปุ่มลากผสมเสียง (Sound Blending Bar) */}
+                <button
+                  onClick={handleP3Blend}
+                  className="mt-5 w-full max-w-md py-4 px-6 rounded-3xl bg-indigo-600 hover:bg-indigo-700 text-white font-thai text-xl flex items-center justify-center gap-3 active:translate-y-1 transition-all"
+                  style={{ boxShadow: '0 6px 0 0 #3730a3' }}
+                >
+                  <Sparkles className="w-6 h-6" />
+                  <span>กดเพื่อไล่เสียงผสมเป็นคำ</span>
+                  <ArrowRight className="w-6 h-6" />
+                  <span className="font-kid font-bold text-2xl underline">{p3Word.word}</span>
+                </button>
+
+                {/* เมื่อกดผสมเสียงแล้ว จะแสดงคำเต็ม + ความหมาย + ปุ่มไมค์ให้ฝึกออกเสียง */}
+                {(p3Blended || allP3TilesTapped) && (
+                  <div className="mt-6 w-full max-w-md bg-slate-50 border-2 border-slate-200 rounded-3xl p-5 animate-pop">
+                    <div className="flex items-center justify-center gap-4">
+                      <span className="text-6xl">{p3Word.emoji}</span>
+                      <div className="text-left">
+                        <div className="font-kid font-bold text-4xl text-indigo-900">{p3Word.word}</div>
+                        <div className="font-thai text-lg text-slate-600">แปลว่า “{p3Word.meaningThai}”</div>
+                      </div>
+                      <div className="flex flex-col gap-1.5 ml-auto">
                         <button
-                          onClick={() => setP3SpokenOk(true)}
-                          className="px-4 py-2 rounded-xl bg-emerald-600 text-white font-thai text-sm"
+                          onClick={() => playWordOrSentence(p3Word.word, 'normal')}
+                          className="px-3 py-1.5 rounded-xl bg-sky-500 text-white font-thai text-sm"
                         >
-                          ✓ ฉันฝึกออกเสียงตามแล้ว ไปคำต่อไป
+                          🔊 ปกติ
                         </button>
+                        <button
+                          onClick={() => playWordOrSentence(p3Word.word, 'slow')}
+                          className="px-3 py-1.5 rounded-xl bg-emerald-500 text-white font-thai text-sm"
+                        >
+                          🐢 ช้าๆ
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* ฝึกออกเสียงใส่ไมค์ */}
+                    {!p3SpokenOk && (
+                      <div className="mt-5 pt-4 border-t border-slate-200 flex flex-col items-center">
+                        <button
+                          onClick={handleP3Mic}
+                          className={`w-20 h-20 rounded-full text-white grid place-items-center ${
+                            p3MicState === 'listening' ? 'animate-mic bg-rose-500' : 'bg-rose-500'
+                          }`}
+                          style={{ boxShadow: p3MicState === 'listening' ? undefined : '0 6px 0 0 #9f1239' }}
+                        >
+                          <Mic className="w-10 h-10" />
+                        </button>
+                        <p className="font-thai text-base text-slate-600 mt-2">
+                          {p3MicState === 'idle' && 'กดไมค์แล้วฝึกอ่านออกเสียงคำนี้'}
+                          {p3MicState === 'listening' && 'กำลังฟังเสียงของหนู... พูดเลย!'}
+                          {p3MicState === 'retry' &&
+                            (p3Heard
+                              ? `ระบบได้ยินว่า "${p3Heard}" — ลองออกเสียงอีกครั้งนะ`
+                              : 'ยังไม่ได้ยินเสียง ลองกดไมค์พูดอีกครั้ง หรือกดปุ่มด้านล่าง')}
+                        </p>
+
+                        {p3Tries >= 1 && (
+                          <div className="mt-3 flex flex-wrap justify-center gap-2">
+                            <button
+                              onClick={handleP3RecordSelf}
+                              disabled={p3Recording}
+                              className="px-4 py-2 rounded-xl bg-sky-100 text-sky-800 font-thai text-sm"
+                            >
+                              {p3Recording ? '🔴 กำลังอัดเสียง 3 วินาที...' : '🎙️ อัดเสียงตัวเองเทียบกับครู'}
+                            </button>
+                            {p3SelfRecordUrl && (
+                              <button
+                                onClick={() => new Audio(p3SelfRecordUrl).play()}
+                                className="px-4 py-2 rounded-xl bg-amber-100 text-amber-800 font-thai text-sm"
+                              >
+                                ▶ ฟังเสียงตัวเอง
+                              </button>
+                            )}
+                            <button
+                              onClick={() => setP3SpokenOk(true)}
+                              className="px-4 py-2 rounded-xl bg-emerald-600 text-white font-thai text-sm"
+                            >
+                              ✓ ฉันฝึกออกเสียงตามแล้ว ไปคำต่อไป
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {p3SpokenOk && (
+                      <div className="mt-4 pt-3 border-t border-slate-200">
+                        <div className="font-thai text-xl text-emerald-600 font-bold mb-3">
+                          🎉 ออกเสียงเยี่ยมมาก!
+                        </div>
+                        <BigButton onClick={nextP3Word} className="w-full" color="#16a34a" shadow="#166534">
+                          {p3Idx + 1 < words.length ? 'ฝึกผสมคำต่อไป ➜' : 'ไปขั้นที่ 4: ฝึกต่อเสียงสะกดคำ ➜'}
+                        </BigButton>
                       </div>
                     )}
                   </div>
                 )}
-
-                {p3SpokenOk && (
-                  <div className="mt-4 pt-3 border-t border-slate-200">
-                    <div className="font-thai text-xl text-emerald-600 font-bold mb-3">
-                      🎉 ออกเสียงเยี่ยมมาก!
-                    </div>
-                    <BigButton onClick={nextP3Word} className="w-full" color="#16a34a" shadow="#166534">
-                      {p3Idx + 1 < words.length ? 'ฝึกผสมคำต่อไป ➜' : 'ไปขั้นที่ 4: ฝึกต่อเสียงสะกดคำ ➜'}
-                    </BigButton>
-                  </div>
-                )}
-              </div>
+              </>
             )}
           </section>
         )}

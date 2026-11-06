@@ -1,7 +1,7 @@
 // src/components/student/StageMap.tsx
 // หน้าแผนที่ด่าน (หน้าหลักของนักเรียน)
 import { useNavigate } from 'react-router-dom';
-import { BookOpen, Check, Lock, Play, Shirt, Sparkles, Trophy } from 'lucide-react';
+import { BookOpen, Check, FileText, Lock, Play, Shirt, Sparkles, Trophy } from 'lucide-react';
 import { useStudents } from '../../context/StudentContext';
 import { LESSONS, STAGES, WORD_MAP, lessonsOfStage } from '../../data/curriculumData';
 import { StudentTopBar } from '../ui';
@@ -148,6 +148,17 @@ export default function StageMap() {
                         <div className="mt-3 text-center max-w-[220px]">
                           <div className="font-thai text-lg leading-tight">{l.title}</div>
                           <div className="font-kid text-slate-500 tracking-wide">{l.targetPhonemes.join(' · ')}</div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              nav(`/worksheet/${l.id}`);
+                            }}
+                            className="mt-1.5 inline-flex items-center gap-1 text-xs font-thai text-indigo-700 bg-white hover:bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-full shadow-2xs hover:shadow-xs transition-all"
+                            title="เปิดใบงาน A4 สำหรับพิมพ์"
+                          >
+                            <FileText className="w-3.5 h-3.5 text-indigo-600" />
+                            <span>ใบงาน A4</span>
+                          </button>
                         </div>
                       </div>
                     );

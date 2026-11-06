@@ -8,7 +8,9 @@ import {
   Award,
   ChevronLeft,
   Download,
+  FileText,
   Lock,
+  Monitor,
   Plus,
   RefreshCw,
   Trash2,
@@ -18,7 +20,7 @@ import {
 } from 'lucide-react';
 import { useStudents } from '../../context/StudentContext';
 import { GRADES, emptyAssessment } from '../../data/mockStudents';
-import { WORD_MAP } from '../../data/curriculumData';
+import { LESSONS, WORD_MAP } from '../../data/curriculumData';
 import { computeLearningGain, exportStudentsToCSV } from '../../services/assessmentEngine';
 import type { StudentDocument } from '../../types/schema';
 
@@ -407,6 +409,58 @@ export default function TeacherDashboard() {
               })}
             </tbody>
           </table>
+        </section>
+
+        {/* คลังใบงาน Phonics A4 และโหมดจอทีวีสำหรับคุณครู */}
+        <section className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div>
+              <h2 className="font-thai text-xl font-bold text-slate-800 flex items-center gap-2">
+                <FileText className="w-6 h-6 text-indigo-600" />
+                คลังใบงาน A4 และโหมดจอทีวีประจำบทเรียน (พิมพ์แจก / สอนหน้าห้อง)
+              </h2>
+              <p className="font-thai text-sm text-slate-500">
+                คุณครูสามารถคลิกเปิดใบงานเพื่อสั่งพิมพ์แจก หรือเปิดโหมดจอทีวีหน้าชั้นเรียนเพื่อสอนนักเรียนพร้อมกัน
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {LESSONS.map((l) => (
+              <div
+                key={l.id}
+                className="border border-slate-200 rounded-xl p-3.5 bg-slate-50 hover:bg-white hover:border-indigo-300 hover:shadow-xs transition-all flex flex-col justify-between"
+              >
+                <div>
+                  <div className="text-xs font-thai font-semibold text-indigo-600">
+                    ด่านที่ {l.stageId} • บทที่ {l.order}
+                  </div>
+                  <div className="font-thai font-bold text-slate-800 text-base mt-0.5">
+                    {l.title}
+                  </div>
+                  <div className="font-kid text-slate-500 text-sm mt-0.5">
+                    เสียง: {l.targetPhonemes.join(' · ')}
+                  </div>
+                </div>
+
+                <div className="flex gap-2 mt-3 pt-2.5 border-t border-slate-200">
+                  <button
+                    onClick={() => nav(`/worksheet/${l.id}`)}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-thai text-xs font-bold transition-colors"
+                  >
+                    <FileText className="w-3.5 h-3.5" /> พิมพ์ใบงาน A4
+                  </button>
+                  <button
+                    onClick={() => nav(`/lesson/${l.id}`)}
+                    className="flex items-center justify-center gap-1 py-1.5 px-3 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 font-thai text-xs font-bold transition-colors"
+                    title="เปิดสอนในโหมดจอทีวี"
+                  >
+                    <Monitor className="w-3.5 h-3.5" /> จอทีวี
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         </section>
       </main>
 
