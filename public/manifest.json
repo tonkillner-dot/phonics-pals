@@ -1,0 +1,8 @@
+{
+  "name": "Phonics Pals — ฝึกออกเสียงโฟนิกส์ โดย ครูนภรัฐ",
+  "short_name": "Phonics Pals",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fffbf0",
+  "theme_color": "#4f46e5"
+}
