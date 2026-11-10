@@ -6,7 +6,7 @@ import type { AssessmentRecord, StudentDocument } from '../types/schema';
 import { MOCK_STUDENTS } from '../data/mockStudents';
 import { LESSONS } from '../data/curriculumData';
 
-const STORAGE_KEY = 'phonics_pals_students_v1';
+const STORAGE_KEY = 'phonics_pals_students_v61';
 const ACTIVE_KEY = 'phonics_pals_active_student';
 
 interface Ctx {
