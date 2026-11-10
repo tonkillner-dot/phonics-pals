@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
   Award,
+  CheckCircle2,
   ChevronLeft,
   Download,
   FileText,
@@ -443,16 +444,23 @@ export default function TeacherDashboard() {
                   </div>
                 </div>
 
-                <div className="flex gap-2 mt-3 pt-2.5 border-t border-slate-200">
+                <div className="flex gap-1.5 mt-3 pt-2.5 border-t border-slate-200">
                   <button
                     onClick={() => nav(`/worksheet/${l.id}`)}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-thai text-xs font-bold transition-colors"
+                    className="flex-1 flex items-center justify-center gap-1 py-1.5 px-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-thai text-xs font-bold transition-colors"
                   >
-                    <FileText className="w-3.5 h-3.5" /> พิมพ์ใบงาน A4
+                    <FileText className="w-3.5 h-3.5" /> ใบงาน A4
                   </button>
                   <button
                     onClick={() => nav(`/lesson/${l.id}`)}
-                    className="flex items-center justify-center gap-1 py-1.5 px-3 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 font-thai text-xs font-bold transition-colors"
+                    className="flex items-center justify-center gap-1 py-1.5 px-2.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-thai text-xs font-bold transition-colors"
+                    title="เปิดโหมดสอบอ่านออกเสียงตัวต่อตัวกับคุณครู"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> สอบอ่าน
+                  </button>
+                  <button
+                    onClick={() => nav(`/lesson/${l.id}`)}
+                    className="flex items-center justify-center gap-1 py-1.5 px-2.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 font-thai text-xs font-bold transition-colors"
                     title="เปิดสอนในโหมดจอทีวี"
                   >
                     <Monitor className="w-3.5 h-3.5" /> จอทีวี

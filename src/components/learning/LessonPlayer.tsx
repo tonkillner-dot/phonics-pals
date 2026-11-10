@@ -180,6 +180,33 @@ export default function LessonPlayer() {
   const [p5Finished, setP5Finished] = useState(false);
   const [p5Listening, setP5Listening] = useState(false);
 
+  // ==================== State โหมดสอบอ่านรายบุคคลกับคุณครู (1-on-1 Oral Reading Check) ====================
+  const [showOralCheck, setShowOralCheck] = useState(false);
+  const [oralCheckedWords, setOralCheckedWords] = useState<Record<string, boolean>>({});
+  const [oralSaved, setOralSaved] = useState(false);
+
+  const passedOralCount = useMemo(
+    () => Object.values(oralCheckedWords).filter(Boolean).length,
+    [oralCheckedWords],
+  );
+
+  const toggleOralWord = (wordId: string) => {
+    setOralCheckedWords((prev) => ({
+      ...prev,
+      [wordId]: !prev[wordId],
+    }));
+  };
+
+  const handleSaveOralAssessment = () => {
+    const passedWordIds = Object.entries(oralCheckedWords)
+      .filter(([_, passed]) => passed)
+      .map(([id]) => id);
+    completeLesson(lessonId, passedWordIds);
+    addStars(50);
+    celebrate();
+    setOralSaved(true);
+  };
+
   const buildPhase5Quiz = (): QuizQuestion[] => {
     const qs: QuizQuestion[] = [];
     // 1) ฟังเสียงโฟนิกส์แล้วเลือกตัวอักษร 2 ข้อ
@@ -629,7 +656,7 @@ export default function LessonPlayer() {
             </div>
           </div>
 
-          {/* ปุ่มเครื่องมือสำหรับคุณครู: โหมดจอทีวี + ใบงาน PDF */}
+          {/* ปุ่มเครื่องมือสำหรับคุณครู: โหมดจอทีวี + ใบงาน PDF + สอบอ่านกับครู */}
           <div className="flex items-center gap-2">
             <button
               onClick={() => setIsTvMode((v) => !v)}
@@ -642,6 +669,16 @@ export default function LessonPlayer() {
             >
               <Monitor className="w-4 h-4" />
               <span>{isTvMode ? '🖥️ จอทีวี (เปิดอยู่)' : '🖥️ โหมดจอทีวี'}</span>
+            </button>
+
+            <button
+              onClick={() => setShowOralCheck(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-thai text-sm font-bold transition-all shadow-2xs"
+              title="เปิดโหมดสอบอ่านออกเสียงรายบุคคลกับคุณครู"
+            >
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <span className="hidden sm:inline">🗣️ สอบอ่านกับครู</span>
+              <span className="sm:hidden">🗣️ อ่านกับครู</span>
             </button>
 
             <button
@@ -1508,9 +1545,19 @@ export default function LessonPlayer() {
                 </div>
 
                 {passedLesson ? (
-                  <BigButton onClick={() => nav('/map')} className="w-full" color="#16a34a" shadow="#166534">
-                    เก่งมาก! ปลดล็อกบทต่อไปบนแผนที่ 🗺️
-                  </BigButton>
+                  <div className="space-y-3">
+                    <BigButton onClick={() => nav('/map')} className="w-full" color="#16a34a" shadow="#166534">
+                      เก่งมาก! ปลดล็อกบทต่อไปบนแผนที่ 🗺️
+                    </BigButton>
+                    <button
+                      type="button"
+                      onClick={() => setShowOralCheck(true)}
+                      className="w-full py-3 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-thai font-bold text-base flex items-center justify-center gap-2 shadow-sm transition-all"
+                    >
+                      <CheckCircle2 className="w-5 h-5 text-emerald-200" />
+                      <span>ถือไปสอบอ่านออกเสียงกับคุณครู ({words.length} คำ) 🗣️</span>
+                    </button>
+                  </div>
                 ) : (
                   <div className="flex flex-col gap-3">
                     <BigButton onClick={() => goToPhase(5)} className="w-full" color="#f97316" shadow="#c2410c">
@@ -1519,6 +1566,14 @@ export default function LessonPlayer() {
                     <BigButton onClick={() => goToPhase(1)} className="w-full" color="#4f46e5" shadow="#3730a3">
                       📖 กลับไปทบทวนตั้งแต่ขั้นที่ 1
                     </BigButton>
+                    <button
+                      type="button"
+                      onClick={() => setShowOralCheck(true)}
+                      className="w-full py-2.5 px-4 rounded-2xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-thai font-bold text-sm flex items-center justify-center gap-2 transition-all"
+                    >
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      <span>สอบอ่านกับคุณครูตัวต่อตัว 🗣️</span>
+                    </button>
                   </div>
                 )}
               </div>
@@ -1526,6 +1581,156 @@ export default function LessonPlayer() {
           </section>
         )}
       </main>
+
+      {/* =========================================================================
+          หน้าต่างสอบอ่านออกเสียงรายบุคคลกับคุณครูนภรัฐ (Oral Reading Check Modal)
+         ========================================================================= */}
+      {showOralCheck && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 animate-pop">
+            
+            {/* ส่วนหัว Modal */}
+            <div className="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between bg-emerald-50 rounded-t-3xl">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white grid place-items-center font-bold text-xl shadow-xs">
+                  🗣️
+                </div>
+                <div>
+                  <h3 className="font-thai font-bold text-lg sm:text-xl text-slate-800">
+                    แบบทดสอบการอ่านออกเสียงกับครูนภรัฐ
+                  </h3>
+                  <p className="font-thai text-xs text-slate-500">
+                    อ่านออกเสียงทีละคำให้คุณครูฟัง • คุณครูกดติ๊ก [✓ ผ่าน] เมื่ออ่านถูกต้อง
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowOralCheck(false)}
+                className="w-9 h-9 rounded-full bg-white hover:bg-slate-200 grid place-items-center text-slate-500 transition-colors shadow-2xs"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* แถบสรุปคะแนน */}
+            <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between flex-wrap gap-2">
+              <div className="font-thai text-sm text-slate-700">
+                คำศัพท์ที่อ่านผ่าน: <b className="text-emerald-700 text-lg">{passedOralCount}</b> / {words.length} คำ
+                {passedOralCount >= 10 && (
+                  <span className="ml-2 bg-emerald-100 text-emerald-800 text-xs px-2.5 py-0.5 rounded-full font-bold">
+                    ✓ ผ่านเกณฑ์แล้ว
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => nav(`/worksheet/${lessonId}`)}
+                  className="flex items-center gap-1 text-xs font-thai font-bold text-indigo-700 bg-white hover:bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-xl transition-all"
+                >
+                  <FileText className="w-3.5 h-3.5" /> พิมพ์ใบงาน A4
+                </button>
+              </div>
+            </div>
+
+            {/* รายการคำศัพท์ 15 คำสำหรับคุณครูติ๊ก */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-2.5">
+              {words.map((w, idx) => {
+                const isPassed = oralCheckedWords[w.id];
+                return (
+                  <div
+                    key={w.id}
+                    className={`p-3 rounded-2xl border-2 transition-all flex items-center justify-between gap-3 ${
+                      isPassed
+                        ? 'bg-emerald-50/80 border-emerald-400 shadow-xs'
+                        : 'bg-white border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="w-7 h-7 rounded-full bg-slate-100 text-slate-700 font-thai text-xs font-bold grid place-items-center">
+                        {idx + 1}
+                      </span>
+                      <span className="text-2xl">{w.emoji}</span>
+                      <div>
+                        <div className="flex items-baseline gap-2">
+                          <span className="font-kid font-bold text-2xl text-indigo-950">
+                            {w.word}
+                          </span>
+                          <span className="font-kid text-slate-500 text-sm">
+                            ({w.phonemes.join(' - ')})
+                          </span>
+                        </div>
+                        <div className="font-thai text-xs text-slate-500">
+                          {w.meaningThai} • <span className="text-indigo-600 font-medium">{w.blendGuideThai}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => playWordOrSentence(w.word, 'normal')}
+                        className="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 grid place-items-center"
+                        title="ฟังเสียงตัวอย่าง"
+                      >
+                        <Volume2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => toggleOralWord(w.id)}
+                        className={`px-3.5 py-2 rounded-xl font-thai text-sm font-bold flex items-center gap-1.5 transition-all ${
+                          isPassed
+                            ? 'bg-emerald-600 text-white shadow-xs'
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300'
+                        }`}
+                      >
+                        {isPassed ? (
+                          <>
+                            <CheckCircle2 className="w-4 h-4" />
+                            <span>ผ่านแล้ว ✓</span>
+                          </>
+                        ) : (
+                          <span>ติ๊กผ่าน [ ✓ ]</span>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* แถบท้าย Modal */}
+            <div className="p-4 sm:p-5 border-t border-slate-200 bg-slate-50 rounded-b-3xl flex flex-wrap items-center justify-between gap-3">
+              <div className="font-thai text-xs text-slate-500">
+                เกณฑ์ผ่าน: อ่านออกเสียงถูกต้องตั้งแต่ 10 คำขึ้นไป (จาก {words.length} คำ)
+              </div>
+              <div className="flex items-center gap-2">
+                {oralSaved ? (
+                  <div className="flex items-center gap-1.5 text-emerald-700 font-thai font-bold text-sm bg-emerald-100 px-4 py-2 rounded-xl">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                    <span>บันทึกผลเรียบร้อยแล้ว! 🎉</span>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleSaveOralAssessment}
+                    disabled={passedOralCount === 0}
+                    className={`px-5 py-2.5 rounded-xl font-thai font-bold text-sm flex items-center gap-2 shadow-sm transition-all ${
+                      passedOralCount >= 10
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white animate-pulse'
+                        : 'bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50'
+                    }`}
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    <span>บันทึกผลการอ่าน ({passedOralCount}/{words.length})</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
